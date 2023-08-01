@@ -1,0 +1,74 @@
+
+body {
+    font-family: "Times New Roman", serif;
+caret-color: transparent;
+    margin: 0;
+    padding: 0;
+}
+
+.container {
+    max-width: 800px;
+    margin: 0 auto;
+    padding: 20px;
+}
+
+h1 {
+    text-align: center;
+    font-size: 28px;
+    margin-bottom: 10px;
+}
+
+.author-names {
+    margin-bottom: 20px;
+    line-height: 1.5;
+    text-align: center; /* Center align the author names */
+}
+
+.author {
+    font-size: 20px;
+    font-weight: bold;
+    font-style: italic; /* Italicize the author names */
+    color: #333; /* Dark gray color */
+}
+
+.paragraph {
+    margin-bottom: 20px;
+    line-height: 1.5;
+    text-align: justify;
+    font-size: 18px;
+}
+
+h3 {
+    font-size: 22px;
+    margin-bottom: 10px;
+    color: #333; /* Dark gray color */
+}
+
+h4 {
+    font-size: 16px;
+    font-weight: normal;
+    color: #888;
+    margin-top: 5px;
+    margin-bottom: 0; /* Remove default margin-bottom for h4 elements */
+}
+
+/* Optional: Custom styles for audio controls */
+audio {
+    display: block;
+    margin-bottom: 10px;
+}
+
+/* Flex container for audio results */
+.audio-container {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px; /* Space between audio controls */
+}
+
+.audio-result {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    min-width: 50px; /* Adjust the minimum width based on your preference */
+}
+
