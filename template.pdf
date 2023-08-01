@@ -1,0 +1,320 @@
+\documentclass[a4paper]{article}
+
+\usepackage{INTERSPEECH2021}
+\usepackage{tcolorbox}
+\usepackage{mathtools}
+\usepackage{amsmath}
+\usepackage{subfigure}
+\usepackage[]{algorithm2e}
+\usepackage[english]{babel}
+\usepackage{amsthm}
+\newtheorem{theorem}{Theorem}
+%\newtheorem{lem}[theorem]{Lemma}
+\newtheorem{corollary}[theorem]{Corollary}
+\newtheorem{rem}[theorem]{Remark}
+\newtheorem{remark}[theorem]{Remark}
+\newtheorem{conj}[theorem]{Conjecture}
+\usepackage[bb=boondox]{mathalfa}
+
+
+\usepackage[normalem]{ulem}
+\newcommand{\yp}{\color{red}}
+
+\title{A Universal Multi-Speaker Multi-Style Text-to-Speech via Disentangled Representation Learning based on R\'enyi Divergence Minimization}
+% \title{Towards a zero-shot universal TTS by Preserving Content Information  A Zero-shot Speaker and Style Adaptation Approach}
+\name{Dipjyoti Paul$^1$, Sankar Mukherjee$^2$, Yannis Pantazis$^3$ and Yannis Stylianou$^1$}
+%The maximum number of authors in the author list is twenty. If the number of contributing authors is more than twenty, they should be listed in a footnote or in acknowledgement section, as appropriate.
+\address{
+  $^1$Computer Science Department, University of Crete, Greece,  $^2$Istituto Italiano di Tecnologia, Italy \\
+  $^3$Inst. of Applied and Computational Mathematics, Foundation for Research and Technology - Hellas  }
+\email{dipjyotipaul@csd.uoc.gr, sankar1535@gmail.com, pantazis@iacm.forth.gr, yannis@csd.uoc.gr}
+
+\begin{document}
+
+\maketitle
+% 
+\begin{abstract}
+In this paper, we present a universal multi-speaker, multi-style Text-to-Speech (TTS) synthesis system which is able to generate speech from text with speaker characteristics and speaking style similar to a given reference signal. Training is conducted on non-parallel data and generates voices in an unsupervised manner, i.e., neither style annotation nor speaker label are required. To avoid leaking content information into the style embeddings (referred to as ``content leakage") and leaking speaker information into style embeddings (referred to as ``style leakage") we suggest a novel \textbf{R}\'enyi \textbf{D}ivergence based \textbf{D}isentangled \textbf{R}epresentation framework through adversarial learning. Similar to mutual information minimization, the proposed approach explicitly estimates via a variational formula and then minimizes the R\'enyi divergence between the joint distribution and the product of marginals for the content-style and style-speaker pairs. By doing so, content, style and speaker spaces become representative and (ideally) independent of each other. Our proposed system greatly reduces content leakage by improving the word error rate by approximately 17-19\% relative to the baseline system. In MOS-speech-quality, the proposed algorithm achieves an improvement of about 16-20\% whereas MOS-style-similarly boost up 15\% relative performance.
+\end{abstract}
+\vspace{2mm}
+\noindent\textbf{Index Terms}: Unsupervised style-content-speaker separation,
+R\'enyi divergence minimization, representation disentanglement, controllable speech synthesis
+
+\section{Introduction}
+
+Speech synthesis which attracts a lot of attention in communication and voice interaction systems aims to synthesize intelligible and high quality speech signals which are indistinguishable from human recordings. The realization of a spoken utterance can be categorized into three principal components: the content, the speaker and the style component. The content component refers to the linguistic content of speech (what). The speaker/voice characteristics are attributed to the speaker component (who). While the definition of style component associates with the variation of pitch, loudness and prosody (how). Style generally covers all aspects of speech that does not contribute to content information or the identification of the speaker.
+
+Recently, the superiority of deep neural network (DNN) based speech synthesis surpassed the conventional speech synthesis models \cite{wang2017tacotron, shen2018natural, arik2017deep, ren2020fastspeech, vanderOord2016, kalchbrenner2018efficient}. Given a sufficient amount of training data, such TTS systems are capable of producing speech with superior quality, particularly for single-speaker synthesis. However, generated speech usually tends to be neutral and less expressive. Synthetic speech expressivity is also restricted by the fact that collecting labelled speech data especially information describing prosody is cumbersome due to concerns on cost, complexity and privacy making unsupervised representation learning immensely popular.
+
+Relating to expressive TTS, previous works aimed to transfer the style factor of a reference speech into the given text without prosody labels \cite{ hsu2018hierarchical, skerry2018towards}. In Global Style Token
+(GST), the reference speech is encoded into a fixed-length style embedding using a trainable style encoder that is conditioned along with content features and speaker embeddings in an unsupervised manner \cite{wang2018style}. Disentangling speech styles with a hierarchy of variational autoencoder (VAE) was introduced in \cite{kingma2013auto, tjandra2020unsupervised}. Estimating mutual information using Mutual-Information Neural Estimator (MINE) between the style and the content has been proposed in \cite{hu2020unsupervised}. To improve the controllability in style modelling, fine-grained style transfer approaches were investigated in \cite{lee2019robust, klimkov2019fine, daxin2020fine}. On the other hand, to facilitate semi-supervised approach, auxiliary style classification task was proposed to accurately capture style information from the reference utterances \cite{wu2019end, li2021controllable}.
+The most recent studies in this direction also take into account the speaker identity \cite{hsu2018hierarchical, jia2018transfer, ma2019generative} which may be hard to extend for TTS models where only a few seconds of target voices are available. In \cite{chien2021investigating, tan2021cuhk}, the authors combined speaker and style embeddings to build an all-round TTS system.
+\begin{figure*}[t]
+  \centering
+  \includegraphics[height=2.95in, width=6.6in]{figs/Transformer-Universal-TTS.pdf}
+  \vspace{-2mm}
+  \caption{System overview of our universal TTS framework. (a) Pre-training of the speaker encoder ($E_{sp}$) using generalized end-to-end loss (GE2E). (b) Universal TTS conditioned on speaker ($E_{sp}$) and style ($E_{st}$) encoders that can synthesized well controllable speech. TransformerTTS is employed as a backbone TTS infrastructure. (c) The proposed training protocol takes into account a novel adversarial RDDR approach combined with the minimization of the TTS reconstruction loss. A reference utterance is used to extract speaker and style factors, whereas during inference (d) the system may take as input any arbitrary speaker or style.}  
+  \vspace{-5.2mm}
+  \label{fig:speech_production}
+\end{figure*}
+
+A universal TTS synthesis system is able to generate speech from text with speaker characteristics and speaking style similar to a given reference signal.
+The major challenge for universal TTS is speaker perturbation along with style transfer. The ultimate goal is to transplant prosody from arbitrary speakers, especially in the context of zero-shot learning where only a few seconds of data is available. Towards this aim, we employ a universal TTS (UTTS) framework which consists of four major components: content encoder, style encoder, speaker encoder and speech decoder. The content encoder generates a content embedding from the text. The style encoder represents the style factors into a style embedding, while the speaker encoder provides the speaker identity in the form of a speaker embedding. Finally, the speech decoder, conditioned on all the above embeddings, synthesizes the desired target speech. 
+
+When considering to generalize the models with multiple speakers and multiple styles using just the reconstruction loss, performance unfortunately deteriorates. During training, content information is leaked into the style embeddings (``content leakage") and speaker information into style embeddings (``style leakage"). Thus at inference, when the reference speech has different content from the input text, the decoder expects the content from the style vector ignoring some part of the content text. Moreover, speaker information could be expected from the style encoder leading to completely different speaker attribute.
+
+To alleviate those issues, we suggest a novel \textbf{R}\'enyi \textbf{D}ivergence based \textbf{D}isentangled \textbf{R}epresentation (RDDR) algorithm. The minimization of R\'enyi divergence becomes feasible via a variational representation formula which involves the cumulant generating function. We introduce two variations of this framework: Hellinger distance RDDR (H-RDDR) and sum of R\'enyi divergences RDDR (S-RDDR). Both variants are selected aiming to reduce the statistical variance of the adversarial component. Moreover, cumulants are preferred over expectations because they capture higher-order statistical information about the underlying distributions which often leads to more stable training \cite{pantazis2020cumulant}. Similar to mutual information minimization where a lower bound of the Kullback-Leibler divergence is utilized, the proposed RDDR algorithm estimates, via neural network approximations, a lower bound of the R\'enyi divergence between the joint distribution and the product of the marginals of two pairs: content-style and speaker-style and then, minimizes the estimated R\'enyi divergence in an adversarial manner. R\'enyi divergence minimization between those distributions pushes the various modalities to become independent.
+%
+Our approach effectively disentangles content, style and speaker information that not only alleviates the leakage issues but also assists the decoder to be trained on the proper data leading to synthesizing high-quality speech. Our work involves independent training of a speaker-discriminative neural encoder to produce utterance level speaker embeddings using a state-of-the-art generalized end-to-end loss \cite{wan2018generalized}. Hence the TTS system is capable of synthesizing speech from unseen speakers in a zero-shot manner. We train style encoder using a set of trainable vectors, which are linearly combined using style factors generated from the input reference speech. Style tokens are trainable parameters that are optimized together with the TTS network parameters. Finally, due to low computational complexity, TransformerTTS is employed for the content encoder and speech decoder \cite{li2019neural}. Experimental results based on both objective and subjective evaluation confirm that the proposed method achieves better style similarity and perceptual speech quality than the baseline TTS system which is trained without a disentangled loss. Code and sound samples can be found in \footnote{https://dipjyoti92.github.io/Universal-TTS/}.
+\vspace{-2mm}
+\section{Universal TTS (UTTS)}
+\vspace{-1mm}
+An overview of the proposed universal TTS framework along with training and inference protocols, is shown in Figure 1. % On the encoder side, we employ three different encoders with different architectures for content, style and speaker, respectively. Whereas, a speech decoder that is conditioned on all the above mentioned latent embeddings produces the output speech features. 
+\vspace{-2mm}
+\subsection{Speaker Encoder}
+\vspace{-1mm}
+The Speaker Encoder ($E_{sp}$) deploys generalized end-to-end (GE2E) loss that is trained on thousands of speakers \cite{wan2018generalized}. The log mel-spectrograms are extracted from speech utterances of arbitrary length. The feature vectors are then assembled in the form of a batch that contains $S$ different speakers, and each speaker has $U$ utterances. Each feature vector $\mathbf{f}_{ij}$ ($1 \leq i \leq S$ and $1\leq j \leq U$) represents the features extracted from speaker $i$ and utterance $j$, respectively. The features are then passed to an encoder architecture. The final embedding vector is $L^2$ normalized and they are calculated by averaging all window frames. The encoder consists of 3 LSTM layers of 768 cells followed by a projection to 256 dimensions as depicted in Figure 1(a). During training, embedding of all utterances for a particular speaker should be closer to the centroid of that particular speaker’s embedding, and at the same time far from other speakers’ centroid. 
+% The similarity matrix $\mathbf{SM}_{ij,k}$ is defined as the scaled cosine similarities between each embedding vector $\mathbf{e}_{ij}$ to all speaker centroids $\mathbf{c}_{k}$ ($1 \leq i,k \leq S$ and $1\leq j \leq U$). 
+% \vspace{-2mm}
+% %As depicted in Figure \ref{spk-encode}, the goal is to increase similarity values of colored areas and minimize the values of gray areas. 
+% \[\vspace{-2mm}
+%     \mathbf{SM}_{ij,k} = 
+% \begin{cases}
+%     w \cdot cos(\mathbf{e}_{ij},\mathbf{c}_{i}^{-j}) + b  & \text{if } k = i\\
+%     w \cdot cos(\mathbf{e}_{ij},\mathbf{c}_{k}) + b   & \text{otherwise}
+% \end{cases}
+% \]
+% \[\vspace{-1.5mm}
+%     where \: \: \mathbf{c}_{i}^{-j} = \frac{1}{U-1}\displaystyle\sum_{u=1;u \neq j}^U \mathbf{e}_{iu} \: and \: \mathbf{c}_{k} = \frac{1}{U}\displaystyle\sum_{u=1}^U \mathbf{e}_{ku}
+% \]
+
+% Here, $w$ and $b$ are trainable parameter. The ultimate GE2E loss $L$ is the accumulative loss over similarity matrix ($1 \leq i \leq S$ and $1\leq j \leq U$) on each embedding vector $\mathbf{e}_{ij}$:
+% \vspace{-4mm}
+% \[\vspace{-1.7mm}
+%     L(\mathbf{f};\mathbf{w}) = \displaystyle\sum_{i,j} L(\mathbf{e}_{ij}) = - \mathbf{SM}_{ij,i} + \log \displaystyle\sum_{k=1}^{S} \exp(\mathbf{SM}_{ij,k})
+% \]
+% The use of softmax function on similarity matrix makes the output equals to 1 iff $k = i$, otherwise the output is 0.
+\vspace{-2mm}
+\subsection{Style Encoder}
+\vspace{-1mm}
+The style encoder ($E_{st}$) is comprised of a convolutional stack, followed by a gated recurrent unit (GRU) similar to the GST-Tacotron paper \cite{wang2018style}. Mel spectrograms, which are extracted from the reference speech, are passed to the stack of six 2D convolutional layers with kernel size 3$\times$2 and 2$\times$2 stride. The channel sizes of convolutional layers are (32, 32, 64, 64, 128, 128) followed by batch normalization and ReLU activation.
+%
+The output from the last convolutional layer is summarized with a single-layer 128-unit unidirectional GRU. Style token layer is implemented with ten style token embeddings and a multi-head attention module \cite{vaswani2017attention}. As with speaker and content embeddings, the dimension of the style embeddings is 256. Finally, we apply $\tanh$ activation to GSTs before attention since it leads to greater token diversity. The overall style encoder is jointly trained with entire TTS model without using prosodic labels.
+\vspace{-2mm}
+
+
+\subsection{TTS Module}
+\vspace{-1mm}
+Given its performance and computational gains, we implemented TransformerTTS as our backbone TTS \cite{li2019neural}. Here, the multi-head attention mechanism constructs the hidden states for the encoder and the decoder in parallel which improves training efficiency. In addition to this backbone TransformerTTS model, a style encoder $E_{st}$ and a speaker encoder $E_{sp}$ is introduced to construct a truly universal TTS, also depicted in Figure 1(b).
+
+The TTS module converts textual, style and speaker information into acoustic features.% with the help of encoder-decoder paradigm. While
+ The final module is a vocoder, WaveRNN \cite{kalchbrenner2018efficient} in our case, which generates speech waveform from the previously generated acoustic information. The first stage of the TTS module is the conversion from text to phonemes. The text-to-phoneme converter not only assists the model to train on vast majority of cases but also resolves cases where some letters can be pronounced differently under different context which can lead to major degradation in the performance when data are not sufficient enough. Given a set of speech and phoneme content pairs $\left(\textbf{x}, \textbf{c}\right)$, the baseline UTTS minimizes the feature-domain reconstruction loss between the predicted output of the speech decoder $D$ and the original speech,   \vspace{-1.8mm}
+\begin{equation}
+  \mathcal{L}_{tts} = \underset{E_{st}, E_{c}, D}{min} \parallel D(E_{c}(\textbf{c}),E_{st}(\textbf{x}),E_{sp}(\textbf{x})) - \textbf{x}\parallel_{1}
+  \label{eq1}
+  \vspace{-2.2mm}
+\end{equation}
+where $||\cdot||_1$ is the ${L}^{1}$ norm. We are not optimizing $E_{sp}$ weights due to the fact that it is already pre-trained on thousands of speakers. Therefore, the speaker embeddings should reflect a well-balanced speaker universe. TTS module is first pre-trained with LJSpeech which has a broad range of linguistic variability and then we freeze $E_{c}$ for the remaining training process. 
+
+\vspace{-1mm}
+\section{Proposed Disentangled Representation}
+
+Although, baseline UTTS tries to synthesize speech using content, style and speaker factors, training just on an ${L}^{1}$ reconstruction loss is not enough. The style embeddings still manage to carry non-style information, leading to content leakage and style leakage. To efficiently decouple all representations without explicit labels, we estimate and minimize the R\'enyi divergence (RD) between their embedding representation pairs ($E_{c}(\textbf{c}), E_{st}(\textbf{x})$) and ($E_{sp}(\textbf{x}), E_{st}(\textbf{x})$). The overall training and inference protocols are demonstrated in Figure 1(c) \& (d). %First, we briefly describe a recently proposed method to estimate the mutual information, then we present our novel application to minimize it jointly with the reconstruction loss.
+
+
+\vspace{-2.8mm}
+\subsection{Preliminaries}
+The standard approach to disentangle two modalities is through Mutual Information (MI) minimization since zero MI implies Independence. MI is the Kullback-Leibler (KL) divergence and it can be represented in the form of Donsker-Varadhan representation \cite{donsker1983asymptotic}. Given two random variable $\textbf{X}$ and $\textbf{Y}$, MI i.e., $\mathcal{I(\textbf{X},\textbf{Y})}$ is equivalent to KL divergence between the joint distribution, $\mathbb{P}_{\textbf{X}\textbf{Y}}$ and the product of marginals, $\mathbb{P}_{\textbf{X}} \otimes \mathbb{P}_{\textbf{Y}}$. MINE \cite{belghazi2018mutual} estimate a lower bound of MI:
+\vspace{-1mm}
+\begin{equation}
+  \footnotesize
+  \mathcal{I(\textbf{X},\textbf{Y})} \geq \mathcal{I}_{\Theta}(\textbf{X},\textbf{Y}) = \underset{\theta \in \Theta}{\sup}\big\{\mathbb{E}_{\mathbb{P}_{\textbf{X}\textbf{Y}}}[T_{\theta}] - \log(\mathbb{E}_{\mathbb{P}_{\textbf{X}} \otimes \mathbb{P}_{\textbf{Y}}}[e^{T_{\theta}}])\big\}
+  \label{MI:eq}
+  \vspace{-1.6mm}
+\end{equation}
+where $T_\theta$ is an NN-based parametrization of the space of all continuous and bounded functions. For the proposed UTTS, $T_{\theta}$ is parametrized by three fully connected layers, each layer followed by ReLU, with parameters $\theta\in\Theta$ while the optimization is performed through stochastic gradient descent.
+
+We introduce this approach to disentangle content, style and speaker representations in UTTS, similar to \cite{hu2020unsupervised}. We use two separate neural estimator $T_{\theta}$ and $T'_{\theta'}$ to approximate MI from the pairs $\left( E_{c}(\textbf{c}),E_{st}(\textbf{x})\right)$ and $\left( E_{st}(\textbf{x}),E_{sp}(\textbf{x})\right)$, respectively. By minimizing MI, we enforce the encoders to learn information that is independent of each other. Thus, the overall objective function is a min-max problem where we seek to maximize the lower-bound of MI w.r.t. $T_{\theta}$ and $T'_{\theta'}$ and minimize the MI and the reconstruction loss w.r.t. $E_{st}$ and $D$. 
+\begin{equation}
+\footnotesize
+\begin{aligned}
+&\mathcal{L} = \underset{E_{st}, D}{\min}\hspace{1mm} \underset{T_{\theta},T'_{\theta'}}{\max} \{\parallel D(E_{c}(\textbf{c}),E_{st}(\textbf{x}),E_{sp}(\textbf{x})) - \textbf{x}\parallel_{1} \\
+&+  \lambda \max(0,\mathcal{I}_{\Theta}(E_c(\textbf{c}),E_{st}(\textbf{x})))
++ \lambda \max(0, \mathcal{I}_{\Theta\sp{\prime}}(E_{st}(\textbf{x}),E_{sp}(\textbf{x})))\}
+\label{eq3}
+\end{aligned}
+\end{equation}
+where $\lambda$ is a hyper parameter, set to 0.1. We also bound from below the estimated MI to non-negative values. %Since $E_{c}$ is a sequence of vectors of varying length, we randomly sample one of the content vectors to compute MI.
+
+
+\vspace{-1mm}
+\subsection{R\'enyi Divergence based Disentangled Representation}
+
+Learning representative latent embeddings is a challenging problem. In order to decouple all the information factors properly, it is necessary to estimate the MI between the embedding pairs. However, it has been demonstrated that the statistical variance of the finite-sampling MI estimator can be exponentially high \cite{Song2020Understanding,pmlr-v108-mcallester20a} often resulting in inferior estimation performance. In this paper, we propose a different family of information-theoretic divergences aiming towards reduced estimator's variance. 
+We present two alternatives based on the R\'enyi divergence family for disentangled speech representation learning. The proposed algorithm is presented in Figure 2.
+\vspace{-1mm}
+\begin{figure}[!ht]
+\centering
+\begin{tcolorbox}[title=Algorithm: Pseudo-code for proposed RDDR training]
+\vspace{-1mm}
+\label{mwgan:alg}
+\textbf{Input}: Speech and text pairs $\left<\textbf{x}_{i}, \textbf{c}_{i}\right>$. \\
+\textbf{Pre-training}: Optimize $E_{c}$, D on LJSpeech using
+
+{
+ \underset{E_{c}, E_{st}, D}{min} \sum_{i}\hspace{-1mm}\parallel D(E_{c}(\textbf{c}_{i}),E_{st}(\textbf{x}_{i}),E_{sp}(\textbf{x}_{i})) - \textbf{x}_{i}\parallel_{1}
+} \\
+$E_{sp}  \leftarrow $ GE2E training \\
+$E_{st}, T_{\theta}, T\sp{\prime}_{\theta'} \leftarrow $ initialization with random weights
+
+\While{$E_{st}, D, T_{\theta}, T\sp{\prime}_{\theta'}$ not converged}{
+Sample mini-batch from $\left<\textbf{x}_{i}, \textbf{c}_{i}\right>$; i = \{1, 2, $\dots$, b\}\\
+$\{\textbf{p}_{i}\} \leftarrow \{E_{c}(\textbf{c}_{i}) |  i = 1, 2, \dots, b\}$ \\
+$\{\textbf{q}_{i}\} \leftarrow \{E_{st}(\textbf{x}_{i}) |  i = 1, 2, \dots, b\}$ \\
+$\{\textbf{r}_{i}\} \leftarrow \{E_{sp}(\textbf{x}_{i}) |  i = 1, 2, \dots, b\}$
+
+$\{\hat{\textbf{p}}_{i}\}, \{\tilde{\textbf{r}}_{i}\} \leftarrow$ random permutation of  $\{\textbf{p}_{i}\}$ , $\{\textbf{r}_{i}\}$ \\
+\begin{multiline*}
+$\mathcal{L}_{RD^{1}} = \sum_{k} [ - \frac{1}{\beta_{k}} \log \frac{1}{b} \sum_{i=1}^{b} e^{-\beta_{k} T_{\theta}(\textbf{p}_{i}, \textbf{q}_{i})} \\ - \frac{1}{\gamma_{k}} \log \frac{1}{b} \sum_{i=1}^{b} e^{\gamma_{k} T_{\theta}(\hat{\textbf{p}}_{i}, \textbf{q}_{i})} ] $
+\end{multiline*}
+
+\begin{multiline*}
+$\mathcal{L}_{RD^{2}} = \sum_{k} [- \frac{1}{\beta_{k}} \log \frac{1}{b} \sum_{i=1}^{b} e^{-\beta_{k} T\sp{\prime}_{\theta'} (\textbf{r}_{i}, \textbf{q}_{i})} \\ - \frac{1}{\gamma_{k}} \log \frac{1}{b} \sum_{i=1}^{b} e^{\gamma_{k} T\sp{\prime}_{\theta'}(\tilde{\textbf{r}}_{i}, \textbf{q}_{i})}]$
+\end{multiline*}
+
+The overall objective function: \\
+\begin{multiline*}
+$\mathcal{L} = \frac{1}{b} \sum_{i=1}^{b} \parallel D(\textbf{p}_{i}, \textbf{q}_{i}, \textbf{r}_{i}) - \textbf{x}_{i}\parallel_{1} \\  + \lambda  \max(0,\mathcal{L}_{RD^{1}}) + \lambda  \max(0,\mathcal{L}_{RD^{2}})$
+\end{multiline*} \\
+$D = D - \epsilon \nabla_{D} \mathcal{L}; \hspace{2mm}E_{st} = E_{st} - \epsilon \nabla_{E_{st}} \mathcal{L}$\\
+$T_{\theta} = T_{\theta} + \epsilon \nabla_{D} \mathcal{L}_{RD^{1}}; \hspace{2mm} T\sp{\prime}_{\theta'} = T\sp{\prime}_{\theta'} + \epsilon \nabla_{D} \mathcal{L}_{RD^{2}}$
+}
+\vspace{-2mm}
+\end{tcolorbox}
+\vspace{-2.5mm}
+\caption{ \small Training algorithm of RDDR.}
+\vspace{-2.5mm}
+\end{figure}
+
+
+%The cumulant generating function (CGF), also known as the log-moment generating function, is defined for a random variable with pdf $p(X)$ as $\Lambda_{f,p} (\beta) = \log \mathbb E_p[e^{\beta f(X)}]$, where $f$ is a measurable function with respect to $p$. RDDR employs expectation of the cumulant loss function and substitutes it in the loss function of MINE in Equation (\ref{MI:eq}).
+
+Given two random variable $\textbf{X}$ and $\textbf{Y}$, RDDR employs a DNN (i.e., $T_{\theta}$) to approximate the maximum lower bound of the R\'enyi divergence (RD) variational formula which is defined via two cumulant generating functions (CGFs):
+\vspace{-0.5mm}
+\begin{equation}
+  \footnotesize
+  \mathcal{R}_{\beta,\gamma}(\textbf{X},\textbf{Y}) \geq \underset{\theta \in \Theta}{sup} -\frac{1}{\beta}\mathbb{E}_{\mathbb{P}_{\textbf{X}\textbf{Y}}}[e^{-\beta T_{\theta}}] - \frac{1}{\gamma} \log(\mathbb{E}_{\mathbb{P}_{\textbf{X}} \otimes \mathbb{P}_{\textbf{Y}}}[e^{\gamma T_{\theta}}])
+  \label{eqRD}
+  \vspace{-1mm}
+\end{equation}
+where hyper-parameters $\beta$ and $\gamma$ are two non-zero real numbers which control the learning dynamics. The use of CGFs allows for an inclusive characterization of the distributions’ statistics, making it possible for $T_{\theta}$ to better enforce independence. This in turn leverages improved disentanglement representation. The proposed algorithm can be interpreted for several choices of its hyper-parameters. Thus, the optimization of the proposed loss function is equivalent to the minimization of a divergence for a wide set of hyper-parameter values. For our experiments, we choose two variations. First,  ($\beta$, $\gamma$) = (0.5, 0.5) which is equivalent to the minimization of Hellinger distance, we refer to this as Hellinger RDDR (H-RDDR). Internal numerical simulations conducted by our group have shown that the variance of the estimated Hellinger distance is significantly smaller than the variance of the estimated KL divergence. Second, we choose a combination of $\beta$ = [0, 0.5, 1] and $\gamma$ = [1, 0.5, 0] which is equivalent to the minimization of the sum of R$\acute{e}$yni divergences. This variant is called sum of RDDR (S-RDDR). This particular choice for the hyper-parameters tries to optimize KL divergence, reverse KL and Hellinger distance simultaneously. Doing so, we anticipate enhanced independence between the speech factors. Similar to Equation (\ref{eq3}), we can formulate the overall objective function in the form of adversarial training.
+
+\vspace{-1mm}
+\section{Results and Discussion}
+
+The speaker encoder training has been conducted on LibriSpeech, VoxCeleb1 and VoxCeleb2 datasets containing utterances from over 8k speakers \cite{paul2020speaker}. TransformerTTS and WaveRNN models are trained using VCTK English corpus \cite{veaux2016superseded} from 109 different speakers. We initially train TransformerTTS model on LJSpeech database \cite{ljspeech17}, which contains 13,100 audio clips from a single speaker, as a ``warm-start'' approach.
+\vspace{-2.5mm}
+\begin{table}[th]
+\footnotesize
+\caption{Objective evaluation tests. Lower scores indicate better performance.}
+\vspace{-2.7mm}
+\label{tab:example}
+\renewcommand{\arraystretch}{1.1}
+\setlength{\tabcolsep}{1.5pt}
+\centering
+% \begin{tabular}{crrrcrrr}
+\begin{tabular}{cccccccc}
+\specialrule{1.25pt}{1pt}{1.05pt}
+\multirow{Methods} & \multicolumn{3}{c}{No Shuffle}                                                        &  & \multicolumn{3}{c}{Shuffle}                                                      \\ \cline{2-8} 
+                        & \multicolumn{1}{l}{RMSE-F0} & \multicolumn{1}{l}{MCD} & \multicolumn{1}{l}{WER(\%)} &  & \multicolumn{1}{l}{RMSE-F0} & \multicolumn{1}{l}{MCD} & \multicolumn{1}{l}{WER(\%)} \\ \specialrule{1.25pt}{1pt}{1pt}
+UTTS                & 29.80                       & 5.28                    & 22.7                   &  & 47.02                       & 6.56                    & 32.1                   \\
+UTTS MINE                    & 30.33                      & 5.38                   & 25.4                   &  & 47.26                       & 6.59                    & 31.9                   \\
+UTTS S-RDDR                  & \textbf{28.59}              & 5.35                   & 21.6                   &  & \textbf{45.75}              & \textbf{6.39}           & 28.7                   \\
+UTTS H-RDDR                  & \textbf{28.59}                      & \textbf{5.26}           & \textbf{18.3}          &  & 47.26                       & 6.59                    & \textbf{26.6}          \\ \specialrule{1.25pt}{1pt}{1pt}
+\end{tabular}
+\vspace{-2.5mm}
+\end{table}
+\vspace{-3.5mm}
+\subsection{Objective Evaluation}
+In this section, we evaluate the performance of disentanglement strategies
+shown in Table 1. To assess the effectiveness of the proposed methods, we calculated three performance scores from 100 random samples. Mel-cepstral distortion (MCD) measures the spectral distance between the synthesized and reference mel-spectrum features. Root mean squared error (RMSE) evaluates the similarity in F0 modeling between reference and synthesized speech. Lastly, the content preservation criterion is evaluated by word error rate (WER). During inference, we evaluate the performance on two conditions: `no shuffle' and `shuffle'. No shuffle feeds same reference speech $\textbf{x}_{i}$ into style and speaker encoders and its corresponding text $\textbf{c}_{i}$ to predict the speech features $\textbf{x}\sp{\prime}$ with the decoder. Whereas, shuffle feeds speech $\textbf{x}_{i}$ into speaker, $\textbf{x}_{j}$ into style and $\textbf{c}_{k}$ into the content encoder given ($i \neq j \neq k$). 
+We observe that the proposed S-RDDR and H-RDDR algorithms outperform both baseline and MINE approach in terms of RMSE-F0 and MCD evaluation metrics with relative improvements. As expected, no shuffle scenarios perform better with respect to shuffled samples. Furthermore, one of the main objectives of RDDR algorithm is to improve the content leakage of the generated speech which we objectively measure using Google's open-source automatic speech recognizer (ASR) \cite{asr}. %\footnote{https://cloud.google.com/speech-to-text}. 
+For the VCTK dataset, ASR achieves a WER of 14.6\% on the held-out real data. Although, both RDDR variants perform better, the performance of H-RDDR is the best so far with WER of 18.3\% and 26.6\% for no shuffle and shuffle scenarios, respectively. We overall conclude that the disentanglement module during training assists the TTS to achieve more accurate rendering of prosodic patterns as well as synthesizing proper speech content to its corresponding text without any significant leakage issues.
+%Therefore, it preserves content of the input text much efficiently.
+\begin{table}[th]
+\vspace{-3mm}
+\footnotesize
+\caption{Average cosine-similarity evaluation.}
+\vspace{-3mm}
+\label{tab:example}
+\renewcommand{\arraystretch}{1}
+\setlength{\tabcolsep}{3.4pt}
+\centering
+\begin{tabular}{ccccc}
+\specialrule{1.25pt}{1pt}{1pt}
+          Methods & Baseline & MINE  & S-RDDR & H-RDDR \\ \specialrule{1.25pt}{1pt}{1pt}
+No Shuffle      & 0.828    & 0.840 & 0.836  & 0.839  \\
+Shuffle & 0.734    & 0.732 & 0.737  & 0.739  \\ \specialrule{1.25pt}{1pt}{1pt}
+\end{tabular}
+\vspace{-3mm}
+\end{table}
+
+Next, we employ cosine-similarity as a speaker similarity measure between the generated and reference speaker's speech. As shown in Table 2, across different systems, cosine-similarity does not vary much. It is attributed to the fact that speaker embeddings are pre-trained and donot jointly train with the TTS module. Therefore, different TTS modules perform equally better and speaker identities are much closer to reference speaker.
+\vspace{-2mm}
+\begin{table}[th]
+\vspace{-3mm}
+\footnotesize
+\caption{MOS scores (95\% confidence interval) of audio quality and speaking style similarity for different TTS modules.}
+\vspace{-2mm}
+\label{tab:example}
+\renewcommand{\arraystretch}{1}
+\setlength{\tabcolsep}{3.4pt}
+\centering
+\begin{tabular}{ccccc}
+\specialrule{1.25pt}{1pt}{1pt}
+         Methods & MOS-Speech-Quality & MOS-Style-Similarity  \\ \specialrule{1.25pt}{1pt}{1pt}
+UTTS     & 3.01 ± 0.05   & 2.98 ± 0.08  \\
+UTTS MINE    & 3.11 ± 0.06  & 2.92 ± 0.08  \\ 
+UTTS S-RDDR    & \textbf{3.62} ± 0.05  & \textbf{3.41} ± 0.07  \\ 
+UTTS H-RDDR    & 3.51 ± 0.06  &  3.36 ± 0.07   \\ 
+\specialrule{1.25pt}{1pt}{1pt}
+\end{tabular}
+\vspace{-4.5mm}
+\end{table}
+
+\vspace{-2mm}
+\subsection{Subjective Evaluation}
+We conduct listening tests to evaluate different TTS modules, and the choice of RDDR approach as depicted in Table 3. Twenty native and non-native English listeners participated in our listening tests. We conducted two separate mean opinion score (MOS) listening tests and subjects were asked to rate the synthesized speech on a scale of five-point (1:Bad, 2:Poor, 3:Fair, 4:Good, 5:Excellent). MOS-Speech-Quality (MSQ) assesses the perceptual speech quality whereas MOS-Style-Similarity (MSS) evaluates the speaking style expressiveness w.r.t. the reference style. MSQ scores indicate that compared to UTTS, the proposed S-RDDR and H-RDDR UTTSs are superior in quality with 20.3\% and 16.6\% relative improvement respectively. We also found that our proposed TTS mimic better style characteristics than baseline and shows significant relative improvement of 14.4\% and 12.7\% for S-RDDR and H-RDDR respectively. Results indicate that disentanglement helps the system to properly learn all the information factors relating to content, speaker and style. Therefore, it enhances the speech decoder's ability to synthesize high-quality speech and also preserves the style of the reference speech better. We did not conduct listening tests for speaker similarity as objective results clearly indicate equal performance for all TTS modules. 
+
+
+\vspace{-2mm}
+\section{Conclusions}
+
+We proposed a novel disentangled representation by exploiting cumulant generating functions in speech synthesis. Our system approximates and then minimizes the R\'enyi divergence between content-style and style-speaker pairs, and it is jointly trained with TTS reconstruction loss in an adversarial manner. Subjective and objective evaluation revealed that the proposed approach outperforms both the baseline and MINE algorithm and is able to eliminate the issues of content and style leakage, resulting in a truly universal TTS system. The main advantage of universal TTS is its high controllability, since it improves multi-speaker multi-style training along with better generalization ability by allowing reliable transfer to speaker and style information. Furthermore, speaker and style conditioning can be computed using few seconds of data in an unsupervised manner.
+
+% \section{Acknowledgements}
+% The work has received funding from the EUs H2020 research and innovation programme under the MSCA GA 67532 (the ENRICH network: www.enrich-etn.eu).
+
+\bibliographystyle{IEEEtran}
+\bibliography{mybib}
+
+% \begin{thebibliography}{9}
+% \bibitem[1]{Davis80-COP}
+%   S.\ B.\ Davis and P.\ Mermelstein,
+%   ``Comparison of parametric representation for monosyllabic word recognition in continuously spoken sentences,''
+%   \textit{IEEE Transactions on Acoustics, Speech and Signal Processing}, vol.~28, no.~4, pp.~357--366, 1980.
+% \bibitem[2]{Rabiner89-ATO}
+%   L.\ R.\ Rabiner,
+%   ``A tutorial on hidden Markov models and selected applications in speech recognition,''
+%   \textit{Proceedings of the IEEE}, vol.~77, no.~2, pp.~257-286, 1989.
+% \bibitem[3]{Hastie09-TEO}
+%   T.\ Hastie, R.\ Tibshirani, and J.\ Friedman,
+%   \textit{The Elements of Statistical Learning -- Data Mining, Inference, and Prediction}.
+%   New York: Springer, 2009.
+% \bibitem[4]{YourName17-XXX}
+%   F.\ Lastname1, F.\ Lastname2, and F.\ Lastname3,
+%   ``Title of your INTERSPEECH 2021 publication,''
+%   in \textit{Interspeech 2021 -- 20\textsuperscript{th} Annual Conference of the International Speech Communication Association, September 15-19, Graz, Austria, Proceedings, Proceedings}, 2020, pp.~100--104.
+% \end{thebibliography}
+
+\end{document}
